@@ -3,6 +3,7 @@ import streamlit as st
 import altair as alt
 import base64
 import os
+import time
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -129,6 +130,8 @@ if len(db_df) < 10:
         ]
         
         sheet.append_row(new_row)
+        time.sleep(0.5)  # Give the sheet time to update
+        st.cache_data.clear()  # Clear cache to force fresh data load
         st.rerun() 
 
     st.divider()
@@ -312,4 +315,5 @@ else:
     st.divider()
     if st.button("🚨 Clear Draft & Reset Database"):
         update_google_sheet(pd.DataFrame(columns=DB_COLUMNS))
+        st.cache_data.clear()  # Clear cache to force fresh data load
         st.rerun()

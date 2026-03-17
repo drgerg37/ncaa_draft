@@ -11,14 +11,12 @@ st.set_page_config(page_title="Madness Managed!", layout="wide")
 
 # --- GLOBAL VARIABLES ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3Cpi0swaR_OK5iZRc/edit#gid=0"
-# Updated Column Names
 ROUNDS = ['Opening Round', 'Round of 32', 'Sweet 16', 'Elite 8', 'Final 4', 'Final']
 DB_COLUMNS = ["Owner", "Player", "Team", "Seed", "PPG"] + ROUNDS + ["Total", "Predicted", "Last Sync"]
 
 # --- WIZARDING FONTS & STYLING ---
 st.markdown("""
     <style>
-    /* Using Luminari for a more sophisticated wizard feel */
     @import url('https://fonts.cdnfonts.com/css/luminari');
     
     .wizard-title {
@@ -100,16 +98,31 @@ def update_google_sheet(df):
     sheet.clear()
     sheet.update(range_name='A1', values=[df.columns.values.tolist()] + df.values.tolist())
 
+# --- STYLE ENGINE ---
+def style_dataframe(df_styled):
+    def apply_styles(row):
+        styles = [''] * len(row)
+        team_idx = list(row.index).index('Team')
+        color = TEAM_COLORS.get(row['Team'], "")
+        if color:
+            text_color = "black" if color in ["#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00"] else "white"
+            styles[team_idx] = f'background-color: {color}; color: {text_color}; font-weight: bold;'
+        if 'X' in row.values:
+            return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999;'] * len(row)
+        return styles
+    return df_styled.style.apply(apply_styles, axis=1)
+
+# --- DATABASE LOADING ---
 try:
     data = sheet.get_all_records()
     db_df = pd.DataFrame(data)
     db_df = db_df.dropna(subset=['Player'])
     db_df = db_df[db_df['Player'].astype(str).str.strip() != '']
-    if db_df.empty or "Player" not in db_df.columns:
-        db_df = pd.DataFrame(columns=DB_COLUMNS)
-    # Mapping old column names to new ones if they exist in the Sheet
+    # Migration handling for old column names
     rename_map = {'RD 1': 'Opening Round', 'RD 2': 'Round of 32'}
     db_df = db_df.rename(columns=rename_map)
+    if db_df.empty or "Player" not in db_df.columns:
+        db_df = pd.DataFrame(columns=DB_COLUMNS)
 except Exception:
     db_df = pd.DataFrame(columns=DB_COLUMNS)
 
@@ -120,22 +133,41 @@ for r in ROUNDS:
 st.markdown('<h1 class="wizard-title">🏀 Madness Managed!</h1>', unsafe_allow_html=True)
 st.markdown('<p class="wizard-subtitle">I solemnly swear that I am up to no good (with this data).</p>', unsafe_allow_html=True)
 
+# --- 1. DRAFT MODE ---
 if len(db_df) < 10:
     current_turn = "Greg" if len(db_df) % 2 == 0 else "Brad"
     st.header(f"👉 Currently Picking: **{current_turn}**")
     st.progress(len(db_df) / 10)
+    
     drafted_names = db_df['Player'].tolist()
     filtered_df = available_players_df[~available_players_df['Player'].isin(drafted_names)]
+    
     current_user_picks = len(db_df[db_df['Owner'] == current_turn])
     if current_user_picks == 4:
         filtered_df = filtered_df[filtered_df['Seed'] >= 7]
         st.warning("🚨 **5th Pick Constraint Active:** 7-seed or lower selection required!")
+    
     selected_player_name = st.selectbox("Select Player:", filtered_df['Player'].tolist())
+    
     if st.button(f"Draft {selected_player_name} for {current_turn}", type="primary"):
         player_data = filtered_df[filtered_df['Player'] == selected_player_name].iloc[0]
         new_row = [current_turn, player_data['Player'], player_data['Team'], int(player_data['Seed']), float(player_data['PPG']), "", "", "", "", "", "", 0, 0, ""]
         sheet.append_row(new_row)
+        st.cache_data.clear()
         st.rerun() 
+
+    st.divider()
+    d1, d2 = st.columns(2)
+    with d1:
+        st.subheader("Greg's Marauders")
+        g_team = db_df[db_df['Owner'] == 'Greg']
+        st.dataframe(style_dataframe(g_team), hide_index=True, column_order=['Player', 'Team', 'Seed', 'PPG'])
+    with d2:
+        st.subheader("Brad's Marauders")
+        b_team = db_df[db_df['Owner'] == 'Brad']
+        st.dataframe(style_dataframe(b_team), hide_index=True, column_order=['Player', 'Team', 'Seed', 'PPG'])
+
+# --- 2. DASHBOARD MODE ---
 else:
     def process_scores(df_input):
         df_proc = df_input.copy()
@@ -163,25 +195,13 @@ else:
     greg_df = db_df[db_df['Owner'] == 'Greg'].reset_index(drop=True)
     brad_df = db_df[db_df['Owner'] == 'Brad'].reset_index(drop=True)
 
-    def style_dataframe(df_styled):
-        def apply_styles(row):
-            styles = [''] * len(row)
-            team_idx = list(row.index).index('Team')
-            color = TEAM_COLORS.get(row['Team'], "")
-            if color:
-                text_color = "black" if color in ["#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00"] else "white"
-                styles[team_idx] = f'background-color: {color}; color: {text_color}; font-weight: bold;'
-            if 'X' in row.values:
-                return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999;'] * len(row)
-            return styles
-        return df_styled.style.apply(apply_styles, axis=1)
-
     def sync_edits(owner, session_key, original_df):
         edits = st.session_state[session_key]["edited_rows"]
         if edits:
             for idx, row_edits in edits.items():
                 for col, val in row_edits.items(): original_df.at[int(idx), col] = val
             update_google_sheet(pd.concat([process_scores(original_df), db_df[db_df['Owner'] != owner]], ignore_index=True))
+            st.cache_data.clear()
 
     col1, col2 = st.columns(2)
     display_cols = ['Player', 'Team', 'Seed', 'PPG'] + ROUNDS + ['Total']
@@ -198,7 +218,7 @@ else:
 
     st.divider()
 
-    # --- THE COURT TRACKER (COLOR FORCED) ---
+    # --- THE COURT TRACKER ---
     img_base64 = get_base64_of_bin_file('Gemini_Generated_Image_ij5asoij5asoij5a.png')
     st.markdown(f"""
         <style>
@@ -212,12 +232,9 @@ else:
 
     chart_data = pd.DataFrame({"Owner": ["Greg", "Brad"], "Points": [greg_df['Total'].sum(), brad_df['Total'].sum()]})
     
-    # Conditional coloring for Ravenclaw Blue and Gryffindor Red
     bars = alt.Chart(chart_data).mark_bar(cornerRadius=8, size=50).encode(
         x=alt.X('Points:Q', axis=None), 
-        y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(
-            labelFontSize=22, labelFont='Luminari', labelFontWeight='bold', domain=False, ticks=False
-        )), 
+        y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(labelFontSize=22, labelFont='Luminari', labelFontWeight='bold', domain=False, ticks=False)), 
         color=alt.condition(alt.datum.Owner == 'Brad', alt.value('#A6192E'), alt.value('#003366'))
     )
     
@@ -229,3 +246,8 @@ else:
         title=alt.TitleParams(text="POINTS TRACKER", font='Luminari', fontSize=32, color='#2E7D32', dy=-20), 
         height=300, background='transparent'
     ).configure_axis(labelColor='white').configure_view(strokeWidth=0), use_container_width=True)
+
+    if st.button("🚨 Reset Database"):
+        update_google_sheet(pd.DataFrame(columns=DB_COLUMNS))
+        st.cache_data.clear()
+        st.rerun()

@@ -3,17 +3,17 @@ import streamlit as st
 import altair as alt
 import base64
 import os
-from streamlit_gsheets import GSheetsConnection
+import gspread
+from google.oauth2.service_account import Credentials
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Madness Managed!", layout="wide")
 
 # --- GLOBAL VARIABLES ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3Cpi0swaR_OK5iZRc/edit?gid=0#gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3Cpi0swaR_OK5iZRc/edit#gid=0"
 ROUNDS = ['Opening Round', 'Round of 32', 'Sweet 16', 'Elite 8', 'Final 4', 'Final']
 DB_COLUMNS = ["Owner", "Player", "Team", "Seed", "PPG"] + ROUNDS + ["Total", "Predicted"]
 
-# Light-background team colors (need dark text for legibility)
 LIGHT_TEAM_COLORS = {
     "#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00",
     "#FF8200", "#FA4616", "#F56600", "#FF6000", "#BF5700"
@@ -24,7 +24,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.cdnfonts.com/css/luminari');
 
-    /* Luminari for headers/titles only */
     .wizard-title {
         font-family: 'Luminari', serif;
         font-size: 65px !important;
@@ -46,7 +45,6 @@ st.markdown("""
         color: #FFD700 !important;
     }
 
-    /* Force data tables to clean sans-serif */
     [data-testid="stDataFrame"] table,
     [data-testid="stDataFrame"] th,
     [data-testid="stDataFrame"] td,
@@ -56,7 +54,6 @@ st.markdown("""
         font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
     }
 
-    /* Metric card styling */
     [data-testid="stMetric"] {
         background: rgba(0,0,0,0.3);
         border-radius: 10px;
@@ -114,22 +111,50 @@ def load_csv_data():
         return pd.DataFrame(columns=['Player', 'Team', 'Seed', 'PPG'])
 
 
+@st.cache_resource
+def get_gspread_client():
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    return gspread.authorize(creds)
+
+
+def read_sheet_to_df(ws):
+    """Read entire sheet into a DataFrame. Returns empty DF on failure."""
+    try:
+        records = ws.get_all_records()
+        if not records:
+            return pd.DataFrame(columns=DB_COLUMNS)
+        df = pd.DataFrame(records)
+        df = df.dropna(subset=['Player'])
+        df = df[df['Player'].astype(str).str.strip() != '']
+        # Migration from old column names
+        df = df.rename(columns={'RD 1': 'Opening Round', 'RD 2': 'Round of 32'})
+        if df.empty or "Player" not in df.columns:
+            return pd.DataFrame(columns=DB_COLUMNS)
+        return df
+    except Exception:
+        return pd.DataFrame(columns=DB_COLUMNS)
+
+
+def write_df_to_sheet(ws, df):
+    """Overwrite entire sheet with DataFrame contents."""
+    ws.clear()
+    # Convert everything to native Python types to avoid gspread serialization issues
+    header = df.columns.tolist()
+    rows = df.astype(str).values.tolist()
+    ws.update(range_name='A1', values=[header] + rows)
+
+
+# --- INIT ---
 available_players_df = load_csv_data()
-
-# --- THE RESERVOIR CONNECTION (proven GSheetsConnection pattern) ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-try:
-    db_df = conn.read(spreadsheet=SHEET_URL, ttl=10)
-    db_df = db_df.dropna(subset=['Player'])
-    db_df = db_df[db_df['Player'].astype(str).str.strip() != '']
-    # Migration: rename old column names if still present
-    rename_map = {'RD 1': 'Opening Round', 'RD 2': 'Round of 32'}
-    db_df = db_df.rename(columns=rename_map)
-    if db_df.empty or "Player" not in db_df.columns:
-        db_df = pd.DataFrame(columns=DB_COLUMNS)
-except Exception:
-    db_df = pd.DataFrame(columns=DB_COLUMNS)
+client = get_gspread_client()
+sheet = client.open_by_url(SHEET_URL).sheet1
+db_df = read_sheet_to_df(sheet)
 
 # Ensure all round columns exist and are string
 for r in ROUNDS:
@@ -145,15 +170,12 @@ for col in ['Total', 'Predicted']:
 
 # --- STYLE ENGINE ---
 def style_dataframe(df_input):
-    """Apply team-color styling via Pandas Styler.
-    Works with st.dataframe() — NOT with st.data_editor().
-    """
+    """Pandas Styler for team colors. Works with st.dataframe(), NOT st.data_editor()."""
     df = df_input.copy()
 
     def apply_styles(row):
         styles = [''] * len(row)
 
-        # Team cell coloring
         if 'Team' in row.index:
             team_idx = list(row.index).index('Team')
             color = TEAM_COLORS.get(row['Team'], "")
@@ -163,7 +185,7 @@ def style_dataframe(df_input):
                     f'background-color: {color}; color: {text_color}; font-weight: bold;'
                 )
 
-        # Eliminated row — check ONLY round columns for 'X'
+        # Eliminated row — check ONLY round columns
         round_vals = [str(row.get(r, "")).strip().upper() for r in ROUNDS if r in row.index]
         if 'X' in round_vals:
             return [
@@ -184,7 +206,7 @@ def style_dataframe(df_input):
 
 # --- HEADER ---
 st.markdown(
-    '<h1 class="wizard-title">\U0001f3c0 Madness Managed!</h1>',
+    '<h1 class="wizard-title">🏀 Madness Managed!</h1>',
     unsafe_allow_html=True
 )
 st.markdown(
@@ -198,7 +220,7 @@ st.markdown(
 # ============================================================
 if len(db_df) < 10:
     current_turn = "Greg" if len(db_df) % 2 == 0 else "Brad"
-    st.header(f"\U0001f449 Currently Picking: **{current_turn}**")
+    st.header(f"👉 Currently Picking: **{current_turn}**")
     st.progress(len(db_df) / 10)
 
     drafted_names = db_df['Player'].tolist()
@@ -207,7 +229,7 @@ if len(db_df) < 10:
     current_user_picks = len(db_df[db_df['Owner'] == current_turn])
     if current_user_picks == 4:
         filtered_df = filtered_df[filtered_df['Seed'] >= 7]
-        st.warning("\U0001f6a8 **5th Pick Constraint Active:** 7-seed or lower selection required!")
+        st.warning("🚨 **5th Pick Constraint Active:** 7-seed or lower selection required!")
 
     if not filtered_df.empty:
         selected_player_name = st.selectbox(
@@ -221,13 +243,14 @@ if len(db_df) < 10:
                 filtered_df['Player'] == selected_player_name
             ].iloc[0]
 
-            # Build new row as DataFrame (exact v1 pattern that works)
+            # Build new row as DataFrame, concat, write ENTIRE frame back
+            # (same full-overwrite pattern that worked in v1)
             new_row = pd.DataFrame([{
                 "Owner": current_turn,
                 "Player": player_data['Player'],
                 "Team": player_data['Team'],
-                "Seed": player_data['Seed'],
-                "PPG": player_data['PPG'],
+                "Seed": int(player_data['Seed']),
+                "PPG": float(player_data['PPG']),
                 "Opening Round": "",
                 "Round of 32": "",
                 "Sweet 16": "",
@@ -239,7 +262,7 @@ if len(db_df) < 10:
             }])
 
             updated_db = pd.concat([db_df, new_row], ignore_index=True)
-            conn.update(spreadsheet=SHEET_URL, data=updated_db)
+            write_df_to_sheet(sheet, updated_db)
             st.cache_data.clear()
             st.rerun()
     else:
@@ -318,7 +341,7 @@ else:
     disabled_cols = ['Player', 'Team', 'Seed', 'PPG', 'Total', 'Predicted', 'Owner']
 
     def sync_edits_to_cloud(owner, session_key, original_df):
-        """Write edits back to Google Sheets (proven v1 pattern)."""
+        """Write edits back to Google Sheets."""
         edits = st.session_state[session_key]["edited_rows"]
         if edits:
             for row_idx, row_edits in edits.items():
@@ -328,7 +351,7 @@ else:
             processed_df = process_scores(original_df)
             other_df = db_df[db_df['Owner'] != owner]
             final_db = pd.concat([processed_df, other_df], ignore_index=True)
-            conn.update(spreadsheet=SHEET_URL, data=final_db)
+            write_df_to_sheet(sheet, final_db)
             st.cache_data.clear()
 
     col1, col2 = st.columns(2)
@@ -336,7 +359,6 @@ else:
     with col1:
         st.subheader("Greg's Marauders")
 
-        # Styled read-only roster (team colors render here)
         st.dataframe(
             style_dataframe(greg_df),
             hide_index=True,
@@ -344,8 +366,7 @@ else:
             use_container_width=True
         )
 
-        # Editable score grid (raw DataFrame, no Styler)
-        with st.expander("\u270f\ufe0f Edit Scores", expanded=False):
+        with st.expander("✏️ Edit Scores", expanded=False):
             st.data_editor(
                 greg_df,
                 hide_index=True,
@@ -366,7 +387,6 @@ else:
     with col2:
         st.subheader("Brad's Marauders")
 
-        # Styled read-only roster (team colors render here)
         st.dataframe(
             style_dataframe(brad_df),
             hide_index=True,
@@ -374,8 +394,7 @@ else:
             use_container_width=True
         )
 
-        # Editable score grid (raw DataFrame, no Styler)
-        with st.expander("\u270f\ufe0f Edit Scores", expanded=False):
+        with st.expander("✏️ Edit Scores", expanded=False):
             st.data_editor(
                 brad_df,
                 hide_index=True,
@@ -396,7 +415,7 @@ else:
     st.divider()
 
     # ============================================================
-    # THE COURT TRACKER (Altair bar chart)
+    # THE COURT TRACKER
     # ============================================================
     img_base64 = get_base64_of_bin_file('Gemini_Generated_Image_ij5asoij5asoij5a.png')
     if img_base64:
@@ -420,21 +439,17 @@ else:
     bars = alt.Chart(chart_data).mark_bar(cornerRadius=8, size=50).encode(
         x=alt.X('Points:Q', axis=None),
         y=alt.Y(
-            'Owner:N',
-            sort='-x',
+            'Owner:N', sort='-x',
             axis=alt.Axis(
-                labelFontSize=22,
-                labelFont='Luminari',
-                labelFontWeight='bold',
-                labelColor='white',
-                domain=False,
-                ticks=False
+                labelFontSize=22, labelFont='Luminari',
+                labelFontWeight='bold', labelColor='white',
+                domain=False, ticks=False
             )
         ),
         color=alt.condition(
             alt.datum.Owner == 'Brad',
-            alt.value('#A6192E'),    # Gryffindor Red
-            alt.value('#003366')     # Ravenclaw Blue
+            alt.value('#A6192E'),
+            alt.value('#003366')
         )
     )
 
@@ -449,26 +464,17 @@ else:
 
     chart = (bars + text).properties(
         title=alt.TitleParams(
-            text="POINTS TRACKER",
-            font='Luminari',
-            fontSize=32,
-            color='#2E7D32',     # Slytherin Green
-            dy=-20
+            text="POINTS TRACKER", font='Luminari',
+            fontSize=32, color='#2E7D32', dy=-20
         ),
-        height=300,
-        background='transparent'
-    ).configure_axis(
-        labelColor='white'
-    ).configure_view(
-        strokeWidth=0
-    )
+        height=300, background='transparent'
+    ).configure_axis(labelColor='white').configure_view(strokeWidth=0)
 
     st.altair_chart(chart, use_container_width=True)
 
     # --- Admin ---
-    with st.expander("\u26a0\ufe0f Admin"):
-        if st.button("\U0001f6a8 Reset Database", type="secondary"):
-            empty_df = pd.DataFrame(columns=DB_COLUMNS)
-            conn.update(spreadsheet=SHEET_URL, data=empty_df)
+    with st.expander("⚠️ Admin"):
+        if st.button("🚨 Reset Database", type="secondary"):
+            write_df_to_sheet(sheet, pd.DataFrame(columns=DB_COLUMNS))
             st.cache_data.clear()
             st.rerun()

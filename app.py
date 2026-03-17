@@ -39,11 +39,6 @@ st.markdown("""
         font-family: 'Henny Penny', cursive !important;
         color: #FFD700 !important;
     }
-    
-    /* Ensure tables use normal font but support background colors */
-    .stDataFrame {
-        font-family: 'Inter', sans-serif !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -164,23 +159,22 @@ else:
     brad_df = db_df[db_df['Owner'] == 'Brad'].reset_index(drop=True)
 
     def style_dataframe(df_styled):
-        def row_style(row):
-            if 'X' in row.values: 
-                return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999'] * len(row)
-            return [''] * len(row)
-        def team_color(val):
-            color = TEAM_COLORS.get(val, "")
+        def apply_styles(row):
+            styles = [''] * len(row)
+            # Team background logic
+            team_val = row['Team']
+            color = TEAM_COLORS.get(team_val, "")
             if color:
                 text_color = "black" if color in ["#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00"] else "white"
-                return f'background-color: {color}; color: {text_color}; font-weight: bold;'
-            return ''
-        
-        # Applying styling logic correctly
-        styler = df_styled.style.apply(row_style, axis=1)
-        # Check for pandas version compatibility for .map vs .applymap
-        if hasattr(styler, 'map'):
-            return styler.map(team_color, subset=['Team'])
-        return styler.applymap(team_color, subset=['Team'])
+                styles[list(row.index).index('Team')] = f'background-color: {color}; color: {text_color}; font-weight: bold;'
+            
+            # Strike-through logic for eliminated players
+            if 'X' in row.values:
+                for i in range(len(styles)):
+                    styles[i] += 'background-color: #4a0000; text-decoration: line-through; color: #ff9999;'
+            return styles
+
+        return df_styled.style.apply(apply_styles, axis=1)
 
     def sync_edits(owner, session_key, original_df):
         edits = st.session_state[session_key]["edited_rows"]
@@ -194,6 +188,7 @@ else:
     
     with col1:
         st.subheader("Greg's Marauders")
+        # Added explicit styling for the data_editor
         st.data_editor(style_dataframe(greg_df), hide_index=True, column_order=display_cols, key="greg_editor", on_change=sync_edits, args=("Greg", "greg_editor", greg_df), use_container_width=True)
         st.metric("Score", f"{greg_df['Total'].sum():g}", delta=f"Potential: {greg_df['Predicted'].sum():.1f}")
 
@@ -204,7 +199,7 @@ else:
 
     st.divider()
 
-    # --- UPDATED COURT TRACKER COLORS ---
+    # --- THE COURT TRACKER (FIXED) ---
     img_base64 = get_base64_of_bin_file('Gemini_Generated_Image_ij5asoij5asoij5a.png')
     st.markdown(f"""
         <style>
@@ -218,20 +213,37 @@ else:
 
     chart_data = pd.DataFrame({"Owner": ["Greg", "Brad"], "Points": [greg_df['Total'].sum(), brad_df['Total'].sum()]})
     
-    # Customizing Owner colors to Ravenclaw Blue and Gryffindor Red
+    # ENSURING TEXT COLOR AT CHART LEVEL
     bars = alt.Chart(chart_data).mark_bar(cornerRadius=8, size=50).encode(
         x=alt.X('Points:Q', axis=None), 
-        y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(labelFontSize=22, labelFont='Henny Penny', labelColor='white', labelFontWeight='bold', domain=False, ticks=False)), 
-        color=alt.Color('Owner:N', scale=alt.Scale(domain=['Greg', 'Brad'], range=['#0E1A40', '#740001']), legend=None) # Ravenclaw vs Gryffindor
+        y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(
+            labelFontSize=22, 
+            labelFont='Henny Penny', 
+            labelFontWeight='bold', 
+            domain=False, 
+            ticks=False
+        )), 
+        # Using Condition to force specific colors to the Owners
+        color=alt.condition(
+            alt.datum.Owner == 'Brad',
+            alt.value('#740001'), # Gryffindor Red
+            alt.value('#0E1A40')  # Ravenclaw Blue
+        )
     )
     
-    # Updating text font and color
     text = alt.Chart(chart_data).mark_text(align='left', dx=15, fontSize=28, font='Henny Penny', color='white').encode(
         x='Points:Q', y=alt.Y('Owner:N', sort='-x'), text='Points:Q'
     )
     
-    # Setting "POINTS TRACKER" to Slytherin Green
+    # FORCE Slytherin Green on the Title
     st.altair_chart((bars + text).properties(
-        title=alt.TitleParams(text="POINTS TRACKER", font='Henny Penny', fontSize=32, color='#1A472A', dy=-20), 
-        height=300, background='transparent'
-    ).configure_view(strokeWidth=0), use_container_width=True)
+        title=alt.TitleParams(
+            text="POINTS TRACKER", 
+            font='Henny Penny', 
+            fontSize=32, 
+            color='#1A472A', # Slytherin Green
+            dy=-20
+        ), 
+        height=300, 
+        background='transparent'
+    ).configure_axis(labelColor='white').configure_view(strokeWidth=0), use_container_width=True)

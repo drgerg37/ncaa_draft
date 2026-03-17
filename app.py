@@ -14,11 +14,15 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3
 ROUNDS = ['Opening Round', 'Round of 32', 'Sweet 16', 'Elite 8', 'Final 4', 'Final']
 DB_COLUMNS = ["Owner", "Player", "Team", "Seed", "PPG"] + ROUNDS + ["Total", "Predicted", "Last Sync"]
 
+# Light-on-dark team colors (for contrast checks)
+LIGHT_TEAM_COLORS = {"#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00", "#FF8200", "#FA4616", "#F56600", "#FF6000"}
+
 # --- WIZARDING FONTS & STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.cdnfonts.com/css/luminari');
-    
+
+    /* --- Luminari for headers/titles only --- */
     .wizard-title {
         font-family: 'Luminari', serif;
         font-size: 65px !important;
@@ -39,6 +43,28 @@ st.markdown("""
         font-family: 'Luminari', serif !important;
         color: #FFD700 !important;
     }
+
+    /* --- Force data tables to clean sans-serif --- */
+    [data-testid="stDataFrame"] table,
+    [data-testid="stDataFrame"] th,
+    [data-testid="stDataFrame"] td,
+    [data-testid="stDataEditor"] table,
+    [data-testid="stDataEditor"] th,
+    [data-testid="stDataEditor"] td {
+        font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif !important;
+    }
+
+    /* --- Metric card styling --- */
+    [data-testid="stMetric"] {
+        background: rgba(0,0,0,0.3);
+        border-radius: 10px;
+        padding: 12px 16px;
+        border: 1px solid rgba(255,215,0,0.3);
+    }
+    [data-testid="stMetricLabel"] {
+        font-family: 'Luminari', serif !important;
+        color: #FFD700 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -47,20 +73,22 @@ TEAM_COLORS = {
     "Minnesota": "#7A0019", "Michigan": "#00274C", "Michigan State": "#18453B", "Ohio State": "#BB0000",
     "Indiana": "#990000", "Wisconsin": "#C5050C", "Maryland": "#E03A3E", "Rutgers": "#CC0033",
     "Penn State": "#041E42", "Nebraska": "#E41C38", "UCLA": "#2D68C4", "USC": "#990000",
-    "Oregon": "#154733", "Washington": "#4B2E83", "Houston": "#C8102E", "Kansas": "#0051BA", 
-    "Iowa State": "#C8102E", "Baylor": "#154734", "Texas": "#BF5700", "Texas Tech": "#CC0000", 
-    "BYU": "#002255", "TCU": "#4D1979", "Kentucky": "#0033A0", "Tennessee": "#FF8200", 
-    "Auburn": "#0C2340", "Alabama": "#9E1B32", "Florida": "#FA4616", "South Carolina": "#73000A", 
-    "Texas A&M": "#500000", "Arkansas": "#9D2235", "Duke": "#003087", "North Carolina": "#7BAFD4", 
-    "Virginia": "#232D4B", "Clemson": "#F56600", "UConn": "#000E2F", "Marquette": "#0033A0", 
-    "Creighton": "#005CA9", "Villanova": "#002D72", "Gonzaga": "#041E42", "Arizona": "#CC0033", 
-    "San Diego State": "#A6192E", "Colorado State": "#1E4D2B", "Utah State": "#0F2439", 
+    "Oregon": "#154733", "Washington": "#4B2E83", "Houston": "#C8102E", "Kansas": "#0051BA",
+    "Iowa State": "#C8102E", "Baylor": "#154734", "Texas": "#BF5700", "Texas Tech": "#CC0000",
+    "BYU": "#002255", "TCU": "#4D1979", "Kentucky": "#0033A0", "Tennessee": "#FF8200",
+    "Auburn": "#0C2340", "Alabama": "#9E1B32", "Florida": "#FA4616", "South Carolina": "#73000A",
+    "Texas A&M": "#500000", "Arkansas": "#9D2235", "Duke": "#003087", "North Carolina": "#7BAFD4",
+    "Virginia": "#232D4B", "Clemson": "#F56600", "UConn": "#000E2F", "Marquette": "#0033A0",
+    "Creighton": "#005CA9", "Villanova": "#002D72", "Gonzaga": "#041E42", "Arizona": "#CC0033",
+    "San Diego State": "#A6192E", "Colorado State": "#1E4D2B", "Utah State": "#0F2439",
     "New Mexico": "#BA0C2F", "Nevada": "#003366", "Boise State": "#0033A0", "St. Mary's": "#E31837",
-    "Dayton": "#004B8D", "Florida Atlantic": "#003366", "Drake": "#00447C", "Indiana State": "#005CA9", 
-    "Princeton": "#FF6000", "Yale": "#00356B", "Grand Canyon": "#522398", "McNeese": "#FFCC00", 
+    "Dayton": "#004B8D", "Florida Atlantic": "#003366", "Drake": "#00447C", "Indiana State": "#005CA9",
+    "Princeton": "#FF6000", "Yale": "#00356B", "Grand Canyon": "#522398", "McNeese": "#FFCC00",
     "Samford": "#00235D", "Howard": "#003A63", "UMBC": "#FFC20E"
 }
 
+
+# --- UTILITY FUNCTIONS ---
 @st.cache_data
 def get_base64_of_bin_file(bin_file):
     if os.path.exists(bin_file):
@@ -69,6 +97,7 @@ def get_base64_of_bin_file(bin_file):
         return base64.b64encode(data).decode()
     return ""
 
+
 @st.cache_resource
 def get_gspread_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -76,6 +105,7 @@ def get_gspread_client():
     creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
+
 
 @st.cache_data
 def load_csv_data():
@@ -90,27 +120,57 @@ def load_csv_data():
     except Exception:
         return pd.DataFrame(columns=['Player', 'Team', 'Seed', 'PPG'])
 
+
+# --- INIT ---
 available_players_df = load_csv_data()
 client = get_gspread_client()
 sheet = client.open_by_url(SHEET_URL).sheet1
+
 
 def update_google_sheet(df):
     sheet.clear()
     sheet.update(range_name='A1', values=[df.columns.values.tolist()] + df.values.tolist())
 
+
 # --- STYLE ENGINE ---
-def style_dataframe(df_styled):
+def style_dataframe(df_input, display_cols=None):
+    """Apply team-color styling via Pandas Styler.
+    
+    IMPORTANT: This works with st.dataframe() but NOT st.data_editor().
+    data_editor silently strips Styler objects — use raw DataFrames there.
+    """
+    df = df_input.copy()
+
     def apply_styles(row):
         styles = [''] * len(row)
-        team_idx = list(row.index).index('Team')
-        color = TEAM_COLORS.get(row['Team'], "")
-        if color:
-            text_color = "black" if color in ["#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00"] else "white"
-            styles[team_idx] = f'background-color: {color}; color: {text_color}; font-weight: bold;'
-        if 'X' in row.values:
-            return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999;'] * len(row)
+
+        # --- Team cell coloring ---
+        if 'Team' in row.index:
+            team_idx = list(row.index).index('Team')
+            color = TEAM_COLORS.get(row['Team'], "")
+            if color:
+                text_color = "black" if color in LIGHT_TEAM_COLORS else "white"
+                styles[team_idx] = f'background-color: {color}; color: {text_color}; font-weight: bold;'
+
+        # --- Eliminated row (check ONLY round columns for 'X') ---
+        round_vals = [str(row.get(r, "")).strip().upper() for r in ROUNDS if r in row.index]
+        if 'X' in round_vals:
+            return [
+                'background-color: #4a0000; text-decoration: line-through; color: #ff9999;'
+            ] * len(row)
+
         return styles
-    return df_styled.style.apply(apply_styles, axis=1)
+
+    styler = df.style.apply(apply_styles, axis=1)
+
+    # Format numeric columns
+    if 'PPG' in df.columns:
+        styler = styler.format({'PPG': '{:.1f}'})
+    if 'Total' in df.columns:
+        styler = styler.format({'Total': lambda v: f'{v:g}' if isinstance(v, (int, float)) else v})
+
+    return styler
+
 
 # --- DATABASE LOADING ---
 try:
@@ -126,128 +186,271 @@ try:
 except Exception:
     db_df = pd.DataFrame(columns=DB_COLUMNS)
 
+# Ensure all round columns exist and are string type
 for r in ROUNDS:
-    if r in db_df.columns:
-        db_df[r] = db_df[r].fillna("").astype(str)
+    if r not in db_df.columns:
+        db_df[r] = ""
+    db_df[r] = db_df[r].fillna("").astype(str)
+
+# Ensure numeric columns exist
+for col in ['Total', 'Predicted']:
+    if col not in db_df.columns:
+        db_df[col] = 0
 
 st.markdown('<h1 class="wizard-title">🏀 Madness Managed!</h1>', unsafe_allow_html=True)
 st.markdown('<p class="wizard-subtitle">I solemnly swear that I am up to no good (with this data).</p>', unsafe_allow_html=True)
 
-# --- 1. DRAFT MODE ---
+
+# ============================================================
+# 1. DRAFT MODE (< 10 players drafted)
+# ============================================================
 if len(db_df) < 10:
     current_turn = "Greg" if len(db_df) % 2 == 0 else "Brad"
     st.header(f"👉 Currently Picking: **{current_turn}**")
     st.progress(len(db_df) / 10)
-    
+
     drafted_names = db_df['Player'].tolist()
     filtered_df = available_players_df[~available_players_df['Player'].isin(drafted_names)]
-    
+
     current_user_picks = len(db_df[db_df['Owner'] == current_turn])
     if current_user_picks == 4:
         filtered_df = filtered_df[filtered_df['Seed'] >= 7]
         st.warning("🚨 **5th Pick Constraint Active:** 7-seed or lower selection required!")
-    
-    selected_player_name = st.selectbox("Select Player:", filtered_df['Player'].tolist())
-    
-    if st.button(f"Draft {selected_player_name} for {current_turn}", type="primary"):
-        player_data = filtered_df[filtered_df['Player'] == selected_player_name].iloc[0]
-        new_row = [current_turn, player_data['Player'], player_data['Team'], int(player_data['Seed']), float(player_data['PPG']), "", "", "", "", "", "", 0, 0, ""]
-        sheet.append_row(new_row)
-        st.cache_data.clear()
-        st.rerun() 
+
+    if not filtered_df.empty:
+        selected_player_name = st.selectbox("Select Player:", filtered_df['Player'].tolist())
+
+        if st.button(f"Draft {selected_player_name} for {current_turn}", type="primary"):
+            player_data = filtered_df[filtered_df['Player'] == selected_player_name].iloc[0]
+            new_row = [
+                current_turn, player_data['Player'], player_data['Team'],
+                int(player_data['Seed']), float(player_data['PPG']),
+                "", "", "", "", "", "",  # 6 round columns
+                0, 0, ""                # Total, Predicted, Last Sync
+            ]
+            sheet.append_row(new_row)
+            st.cache_data.clear()
+            st.rerun()
+    else:
+        st.error("No players available to draft!")
 
     st.divider()
     d1, d2 = st.columns(2)
     with d1:
         st.subheader("Greg's Marauders")
         g_team = db_df[db_df['Owner'] == 'Greg']
-        st.dataframe(style_dataframe(g_team), hide_index=True, column_order=['Player', 'Team', 'Seed', 'PPG'])
+        if not g_team.empty:
+            st.dataframe(
+                style_dataframe(g_team),
+                hide_index=True,
+                column_order=['Player', 'Team', 'Seed', 'PPG'],
+                use_container_width=True
+            )
     with d2:
         st.subheader("Brad's Marauders")
         b_team = db_df[db_df['Owner'] == 'Brad']
-        st.dataframe(style_dataframe(b_team), hide_index=True, column_order=['Player', 'Team', 'Seed', 'PPG'])
+        if not b_team.empty:
+            st.dataframe(
+                style_dataframe(b_team),
+                hide_index=True,
+                column_order=['Player', 'Team', 'Seed', 'PPG'],
+                use_container_width=True
+            )
 
-# --- 2. DASHBOARD MODE ---
+
+# ============================================================
+# 2. DASHBOARD MODE (draft complete)
+# ============================================================
 else:
     def process_scores(df_input):
         df_proc = df_input.copy()
         for index, row in df_proc.iterrows():
             total, blanks, hit_x = 0, 0, False
             for r in ROUNDS:
-                if r not in df_proc.columns: continue
+                if r not in df_proc.columns:
+                    continue
                 val = str(row[r]).strip().upper()
                 if hit_x or val == 'X':
                     hit_x = True
                     df_proc.at[index, r] = 'X'
-                elif val and val != "NAN":
+                elif val and val != "" and val != "NAN":
                     try:
                         total += float(val)
                         df_proc.at[index, r] = val
-                    except:
-                        df_proc.at[index, r] = ""; blanks += 1
+                    except ValueError:
+                        df_proc.at[index, r] = ""
+                        blanks += 1
                 else:
-                    df_proc.at[index, r] = ""; blanks += 1
+                    df_proc.at[index, r] = ""
+                    blanks += 1
             df_proc.at[index, 'Total'] = total
-            df_proc.at[index, 'Predicted'] = total + (float(row.get('PPG', 0)) * blanks)
+            ppg = 0
+            try:
+                ppg = float(row.get('PPG', 0))
+            except (ValueError, TypeError):
+                pass
+            df_proc.at[index, 'Predicted'] = total + (ppg * blanks)
         return df_proc
 
     db_df = process_scores(db_df)
     greg_df = db_df[db_df['Owner'] == 'Greg'].reset_index(drop=True)
     brad_df = db_df[db_df['Owner'] == 'Brad'].reset_index(drop=True)
 
+    # --- Columns displayed in the styled roster view ---
+    roster_cols = ['Player', 'Team', 'Seed', 'PPG'] + ROUNDS + ['Total']
+
+    # --- Sync edits callback ---
     def sync_edits(owner, session_key, original_df):
-        edits = st.session_state[session_key]["edited_rows"]
+        edits = st.session_state.get(session_key, {}).get("edited_rows", {})
         if edits:
             for idx, row_edits in edits.items():
-                for col, val in row_edits.items(): original_df.at[int(idx), col] = val
-            update_google_sheet(pd.concat([process_scores(original_df), db_df[db_df['Owner'] != owner]], ignore_index=True))
+                for col, val in row_edits.items():
+                    original_df.at[int(idx), col] = val
+            other_df = db_df[db_df['Owner'] != owner]
+            merged = pd.concat([process_scores(original_df), other_df], ignore_index=True)
+            update_google_sheet(merged)
             st.cache_data.clear()
 
     col1, col2 = st.columns(2)
-    display_cols = ['Player', 'Team', 'Seed', 'PPG'] + ROUNDS + ['Total']
-    
+
+    # --- Editable round columns config (lock everything else) ---
+    disabled_cols = ['Player', 'Team', 'Seed', 'PPG', 'Total', 'Predicted', 'Owner', 'Last Sync']
+
     with col1:
         st.subheader("Greg's Marauders")
-        st.data_editor(style_dataframe(greg_df), hide_index=True, column_order=display_cols, key="greg_editor", on_change=sync_edits, args=("Greg", "greg_editor", greg_df), use_container_width=True)
-        st.metric("Score", f"{greg_df['Total'].sum():g}", delta=f"Potential: {greg_df['Predicted'].sum():.1f}")
+
+        # Styled read-only roster with team colors
+        st.dataframe(
+            style_dataframe(greg_df),
+            hide_index=True,
+            column_order=roster_cols,
+            use_container_width=True
+        )
+
+        # Editable score grid
+        with st.expander("✏️ Edit Scores", expanded=False):
+            st.data_editor(
+                greg_df,
+                hide_index=True,
+                column_order=['Player'] + ROUNDS,
+                disabled=disabled_cols,
+                key="greg_editor",
+                on_change=sync_edits,
+                args=("Greg", "greg_editor", greg_df),
+                use_container_width=True
+            )
+
+        st.metric(
+            "Score",
+            f"{greg_df['Total'].sum():g}",
+            delta=f"Potential: {greg_df['Predicted'].sum():.1f}"
+        )
 
     with col2:
         st.subheader("Brad's Marauders")
-        st.data_editor(style_dataframe(brad_df), hide_index=True, column_order=display_cols, key="brad_editor", on_change=sync_edits, args=("Brad", "brad_editor", brad_df), use_container_width=True)
-        st.metric("Score", f"{brad_df['Total'].sum():g}", delta=f"Potential: {brad_df['Predicted'].sum():.1f}")
+
+        # Styled read-only roster with team colors
+        st.dataframe(
+            style_dataframe(brad_df),
+            hide_index=True,
+            column_order=roster_cols,
+            use_container_width=True
+        )
+
+        # Editable score grid
+        with st.expander("✏️ Edit Scores", expanded=False):
+            st.data_editor(
+                brad_df,
+                hide_index=True,
+                column_order=['Player'] + ROUNDS,
+                disabled=disabled_cols,
+                key="brad_editor",
+                on_change=sync_edits,
+                args=("Brad", "brad_editor", brad_df),
+                use_container_width=True
+            )
+
+        st.metric(
+            "Score",
+            f"{brad_df['Total'].sum():g}",
+            delta=f"Potential: {brad_df['Predicted'].sum():.1f}"
+        )
 
     st.divider()
 
-    # --- THE COURT TRACKER ---
+    # ============================================================
+    # THE COURT TRACKER (Altair bar chart)
+    # ============================================================
     img_base64 = get_base64_of_bin_file('Gemini_Generated_Image_ij5asoij5asoij5a.png')
-    st.markdown(f"""
-        <style>
-        [data-testid="stVegaLiteChart"] {{
-            background-image: url("data:image/png;base64,{img_base64}");
-            background-size: cover; background-position: center;
-            border-radius: 15px; padding: 25px;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
+    if img_base64:
+        st.markdown(f"""
+            <style>
+            [data-testid="stVegaLiteChart"] {{
+                background-image: url("data:image/png;base64,{img_base64}");
+                background-size: cover; background-position: center;
+                border-radius: 15px; padding: 25px;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
 
-    chart_data = pd.DataFrame({"Owner": ["Greg", "Brad"], "Points": [greg_df['Total'].sum(), brad_df['Total'].sum()]})
-    
+    greg_total = float(greg_df['Total'].sum())
+    brad_total = float(brad_df['Total'].sum())
+    chart_data = pd.DataFrame({
+        "Owner": ["Greg", "Brad"],
+        "Points": [greg_total, brad_total]
+    })
+
     bars = alt.Chart(chart_data).mark_bar(cornerRadius=8, size=50).encode(
-        x=alt.X('Points:Q', axis=None), 
-        y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(labelFontSize=22, labelFont='Luminari', labelFontWeight='bold', domain=False, ticks=False)), 
-        color=alt.condition(alt.datum.Owner == 'Brad', alt.value('#A6192E'), alt.value('#003366'))
+        x=alt.X('Points:Q', axis=None),
+        y=alt.Y(
+            'Owner:N',
+            sort='-x',
+            axis=alt.Axis(
+                labelFontSize=22,
+                labelFont='Luminari',
+                labelFontWeight='bold',
+                labelColor='white',   # Explicit white for dark background
+                domain=False,
+                ticks=False
+            )
+        ),
+        color=alt.condition(
+            alt.datum.Owner == 'Brad',
+            alt.value('#A6192E'),   # Gryffindor Red
+            alt.value('#003366')    # Ravenclaw Blue
+        )
     )
-    
-    text = alt.Chart(chart_data).mark_text(align='left', dx=15, fontSize=28, font='Luminari', color='white').encode(
-        x='Points:Q', y=alt.Y('Owner:N', sort='-x'), text='Points:Q'
-    )
-    
-    st.altair_chart((bars + text).properties(
-        title=alt.TitleParams(text="POINTS TRACKER", font='Luminari', fontSize=32, color='#2E7D32', dy=-20), 
-        height=300, background='transparent'
-    ).configure_axis(labelColor='white').configure_view(strokeWidth=0), use_container_width=True)
 
-    if st.button("🚨 Reset Database"):
-        update_google_sheet(pd.DataFrame(columns=DB_COLUMNS))
-        st.cache_data.clear()
-        st.rerun()
+    text = alt.Chart(chart_data).mark_text(
+        align='left', dx=15, fontSize=28, font='Luminari',
+        fontWeight='bold', color='white'
+    ).encode(
+        x='Points:Q',
+        y=alt.Y('Owner:N', sort='-x'),
+        text=alt.Text('Points:Q', format='.0f')
+    )
+
+    chart = (bars + text).properties(
+        title=alt.TitleParams(
+            text="POINTS TRACKER",
+            font='Luminari',
+            fontSize=32,
+            color='#2E7D32',    # Slytherin Green
+            dy=-20
+        ),
+        height=300,
+        background='transparent'
+    ).configure_axis(
+        labelColor='white'
+    ).configure_view(
+        strokeWidth=0
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+    # --- Admin ---
+    with st.expander("⚠️ Admin"):
+        if st.button("🚨 Reset Database", type="secondary"):
+            update_google_sheet(pd.DataFrame(columns=DB_COLUMNS))
+            st.cache_data.clear()
+            st.rerun()

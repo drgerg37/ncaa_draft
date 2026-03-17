@@ -11,16 +11,18 @@ st.set_page_config(page_title="Madness Managed!", layout="wide")
 
 # --- GLOBAL VARIABLES ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3Cpi0swaR_OK5iZRc/edit#gid=0"
-ROUNDS = ['RD 1', 'RD 2', 'Sweet 16', 'Elite 8', 'Final 4', 'Final']
+# Updated Column Names
+ROUNDS = ['Opening Round', 'Round of 32', 'Sweet 16', 'Elite 8', 'Final 4', 'Final']
 DB_COLUMNS = ["Owner", "Player", "Team", "Seed", "PPG"] + ROUNDS + ["Total", "Predicted", "Last Sync"]
 
 # --- WIZARDING FONTS & STYLING ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Henny+Penny&display=swap');
+    /* Using Luminari for a more sophisticated wizard feel */
+    @import url('https://fonts.cdnfonts.com/css/luminari');
     
     .wizard-title {
-        font-family: 'Henny Penny', cursive;
+        font-family: 'Luminari', serif;
         font-size: 65px !important;
         color: #FFD700;
         text-shadow: 3px 3px 5px #000000;
@@ -28,7 +30,7 @@ st.markdown("""
         margin-bottom: 0px;
     }
     .wizard-subtitle {
-        font-family: 'Henny Penny', cursive;
+        font-family: 'Luminari', serif;
         font-size: 24px !important;
         color: #f0f0f0;
         text-align: center;
@@ -36,7 +38,7 @@ st.markdown("""
         margin-bottom: 30px;
     }
     h2, h3 {
-        font-family: 'Henny Penny', cursive !important;
+        font-family: 'Luminari', serif !important;
         color: #FFD700 !important;
     }
     </style>
@@ -105,6 +107,9 @@ try:
     db_df = db_df[db_df['Player'].astype(str).str.strip() != '']
     if db_df.empty or "Player" not in db_df.columns:
         db_df = pd.DataFrame(columns=DB_COLUMNS)
+    # Mapping old column names to new ones if they exist in the Sheet
+    rename_map = {'RD 1': 'Opening Round', 'RD 2': 'Round of 32'}
+    db_df = db_df.rename(columns=rename_map)
 except Exception:
     db_df = pd.DataFrame(columns=DB_COLUMNS)
 
@@ -161,19 +166,14 @@ else:
     def style_dataframe(df_styled):
         def apply_styles(row):
             styles = [''] * len(row)
-            # Team background logic
-            team_val = row['Team']
-            color = TEAM_COLORS.get(team_val, "")
+            team_idx = list(row.index).index('Team')
+            color = TEAM_COLORS.get(row['Team'], "")
             if color:
                 text_color = "black" if color in ["#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00"] else "white"
-                styles[list(row.index).index('Team')] = f'background-color: {color}; color: {text_color}; font-weight: bold;'
-            
-            # Strike-through logic for eliminated players
+                styles[team_idx] = f'background-color: {color}; color: {text_color}; font-weight: bold;'
             if 'X' in row.values:
-                for i in range(len(styles)):
-                    styles[i] += 'background-color: #4a0000; text-decoration: line-through; color: #ff9999;'
+                return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999;'] * len(row)
             return styles
-
         return df_styled.style.apply(apply_styles, axis=1)
 
     def sync_edits(owner, session_key, original_df):
@@ -184,11 +184,10 @@ else:
             update_google_sheet(pd.concat([process_scores(original_df), db_df[db_df['Owner'] != owner]], ignore_index=True))
 
     col1, col2 = st.columns(2)
-    display_cols = ['Player', 'Team', 'Seed', 'PPG', 'RD 1', 'RD 2', 'Sweet 16', 'Elite 8', 'Final 4', 'Final', 'Total']
+    display_cols = ['Player', 'Team', 'Seed', 'PPG'] + ROUNDS + ['Total']
     
     with col1:
         st.subheader("Greg's Marauders")
-        # Added explicit styling for the data_editor
         st.data_editor(style_dataframe(greg_df), hide_index=True, column_order=display_cols, key="greg_editor", on_change=sync_edits, args=("Greg", "greg_editor", greg_df), use_container_width=True)
         st.metric("Score", f"{greg_df['Total'].sum():g}", delta=f"Potential: {greg_df['Predicted'].sum():.1f}")
 
@@ -199,7 +198,7 @@ else:
 
     st.divider()
 
-    # --- THE COURT TRACKER (FIXED) ---
+    # --- THE COURT TRACKER (COLOR FORCED) ---
     img_base64 = get_base64_of_bin_file('Gemini_Generated_Image_ij5asoij5asoij5a.png')
     st.markdown(f"""
         <style>
@@ -213,37 +212,20 @@ else:
 
     chart_data = pd.DataFrame({"Owner": ["Greg", "Brad"], "Points": [greg_df['Total'].sum(), brad_df['Total'].sum()]})
     
-    # ENSURING TEXT COLOR AT CHART LEVEL
+    # Conditional coloring for Ravenclaw Blue and Gryffindor Red
     bars = alt.Chart(chart_data).mark_bar(cornerRadius=8, size=50).encode(
         x=alt.X('Points:Q', axis=None), 
         y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(
-            labelFontSize=22, 
-            labelFont='Henny Penny', 
-            labelFontWeight='bold', 
-            domain=False, 
-            ticks=False
+            labelFontSize=22, labelFont='Luminari', labelFontWeight='bold', domain=False, ticks=False
         )), 
-        # Using Condition to force specific colors to the Owners
-        color=alt.condition(
-            alt.datum.Owner == 'Brad',
-            alt.value('#740001'), # Gryffindor Red
-            alt.value('#0E1A40')  # Ravenclaw Blue
-        )
+        color=alt.condition(alt.datum.Owner == 'Brad', alt.value('#A6192E'), alt.value('#003366'))
     )
     
-    text = alt.Chart(chart_data).mark_text(align='left', dx=15, fontSize=28, font='Henny Penny', color='white').encode(
+    text = alt.Chart(chart_data).mark_text(align='left', dx=15, fontSize=28, font='Luminari', color='white').encode(
         x='Points:Q', y=alt.Y('Owner:N', sort='-x'), text='Points:Q'
     )
     
-    # FORCE Slytherin Green on the Title
     st.altair_chart((bars + text).properties(
-        title=alt.TitleParams(
-            text="POINTS TRACKER", 
-            font='Henny Penny', 
-            fontSize=32, 
-            color='#1A472A', # Slytherin Green
-            dy=-20
-        ), 
-        height=300, 
-        background='transparent'
+        title=alt.TitleParams(text="POINTS TRACKER", font='Luminari', fontSize=32, color='#2E7D32', dy=-20), 
+        height=300, background='transparent'
     ).configure_axis(labelColor='white').configure_view(strokeWidth=0), use_container_width=True)

@@ -145,7 +145,7 @@ if len(db_df) < 10:
 
 # --- 5. THE DASHBOARD (Draft Complete) ---
 else:
-    st.title("🏆 Tournament Dashboard")
+    st.title("🏆 March Madness 2026")
     st.success("The Draft is Complete! The system is now waiting for Melvin to sync live scores.")
     
     def process_scores(df_input):

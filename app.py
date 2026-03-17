@@ -5,7 +5,10 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 # PAGE CONFIG
-st.set_page_config(page_title="Project Ligand: NCAA Draft", layout="wide")
+st.set_page_config(page_title="Project Ligand: Draft Board", layout="wide")
+
+# THE FIX: Hardcoding the Sheet URL directly
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3Cpi0swaR_OK5iZRc/edit#gid=0"
 
 # AUTH & DATA FETCH
 def get_data():
@@ -14,13 +17,14 @@ def get_data():
     creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
-    sheet = client.open_by_url(st.secrets["sheet_url"]).sheet1
+    # Using the hardcoded URL instead of secrets
+    sheet = client.open_by_url(SHEET_URL).sheet1
     data = sheet.get_all_records()
     sync_time = sheet.acell('N1').value
     return pd.DataFrame(data), sync_time
 
 # UI TABS
-tab1, tab2 = st.tabs(["🏆 Leaderboard", "📊 Draft Assistant"])
+tab1, tab2 = st.tabs(["🏆 Leaderboard", "📝 Draft Assistant"])
 
 with tab1:
     st.title("🏀 Live Leaderboard")
@@ -41,7 +45,6 @@ with tab1:
 
 with tab2:
     st.title("🧪 Scouting & Draft Search")
-    # This reads the CSV you pushed to GitHub
     try:
         research_df = pd.read_csv('ncaa_2026_top_scorers.csv')
         search_query = st.text_input("Search for a player to draft:")
@@ -58,4 +61,4 @@ with tab2:
     except Exception as e:
         st.warning(f"Research CSV not found: {e}")
 
-st.caption(f"Project Ligand • Version 2.1 • {datetime.now().strftime('%H:%M:%S')}")
+st.caption(f"Project Ligand • Version 2.2 • {datetime.now().strftime('%H:%M:%S')}")

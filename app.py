@@ -19,7 +19,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Henny+Penny&display=swap');
     
-    /* Apply magical font ONLY to specific classes */
     .wizard-title {
         font-family: 'Henny Penny', cursive;
         font-size: 65px !important;
@@ -27,7 +26,6 @@ st.markdown("""
         text-shadow: 3px 3px 5px #000000;
         text-align: center;
         margin-bottom: 0px;
-        line-height: 1.2;
     }
     .wizard-subtitle {
         font-family: 'Henny Penny', cursive;
@@ -37,14 +35,13 @@ st.markdown("""
         font-style: italic;
         margin-bottom: 30px;
     }
-    /* Ensure Subheaders also use the font */
     h2, h3 {
         font-family: 'Henny Penny', cursive !important;
         color: #FFD700 !important;
     }
     
-    /* Standard font for dataframes and tables */
-    .stDataFrame, [data-testid="stTable"] {
+    /* Ensure tables use normal font but support background colors */
+    .stDataFrame {
         font-family: 'Inter', sans-serif !important;
     }
     </style>
@@ -120,7 +117,6 @@ for r in ROUNDS:
     if r in db_df.columns:
         db_df[r] = db_df[r].fillna("").astype(str)
 
-# --- THE UPDATED TITLE ---
 st.markdown('<h1 class="wizard-title">🏀 Madness Managed!</h1>', unsafe_allow_html=True)
 st.markdown('<p class="wizard-subtitle">I solemnly swear that I am up to no good (with this data).</p>', unsafe_allow_html=True)
 
@@ -169,7 +165,8 @@ else:
 
     def style_dataframe(df_styled):
         def row_style(row):
-            if 'X' in row.values: return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999'] * len(row)
+            if 'X' in row.values: 
+                return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999'] * len(row)
             return [''] * len(row)
         def team_color(val):
             color = TEAM_COLORS.get(val, "")
@@ -177,8 +174,13 @@ else:
                 text_color = "black" if color in ["#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00"] else "white"
                 return f'background-color: {color}; color: {text_color}; font-weight: bold;'
             return ''
+        
+        # Applying styling logic correctly
         styler = df_styled.style.apply(row_style, axis=1)
-        return styler.map(team_color, subset=['Team']) if hasattr(styler, 'map') else styler.applymap(team_color, subset=['Team'])
+        # Check for pandas version compatibility for .map vs .applymap
+        if hasattr(styler, 'map'):
+            return styler.map(team_color, subset=['Team'])
+        return styler.applymap(team_color, subset=['Team'])
 
     def sync_edits(owner, session_key, original_df):
         edits = st.session_state[session_key]["edited_rows"]
@@ -188,7 +190,7 @@ else:
             update_google_sheet(pd.concat([process_scores(original_df), db_df[db_df['Owner'] != owner]], ignore_index=True))
 
     col1, col2 = st.columns(2)
-    display_cols = ['Player', 'Team', 'Seed', 'PPG', 'Opening Round', 'Round of 32', 'Sweet 16', 'Elite 8', 'Final 4', 'Final', 'Total']
+    display_cols = ['Player', 'Team', 'Seed', 'PPG', 'RD 1', 'RD 2', 'Sweet 16', 'Elite 8', 'Final 4', 'Final', 'Total']
     
     with col1:
         st.subheader("Greg's Marauders")
@@ -202,7 +204,7 @@ else:
 
     st.divider()
 
-    # --- UPDATED BACKGROUND IMAGE CALL ---
+    # --- UPDATED COURT TRACKER COLORS ---
     img_base64 = get_base64_of_bin_file('Gemini_Generated_Image_ij5asoij5asoij5a.png')
     st.markdown(f"""
         <style>
@@ -215,12 +217,21 @@ else:
         """, unsafe_allow_html=True)
 
     chart_data = pd.DataFrame({"Owner": ["Greg", "Brad"], "Points": [greg_df['Total'].sum(), brad_df['Total'].sum()]})
+    
+    # Customizing Owner colors to Ravenclaw Blue and Gryffindor Red
     bars = alt.Chart(chart_data).mark_bar(cornerRadius=8, size=50).encode(
         x=alt.X('Points:Q', axis=None), 
         y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(labelFontSize=22, labelFont='Henny Penny', labelColor='white', labelFontWeight='bold', domain=False, ticks=False)), 
-        color=alt.Color('Owner:N', scale=alt.Scale(domain=['Greg', 'Brad'], range=['#FF9500', '#FF3B30']), legend=None)
+        color=alt.Color('Owner:N', scale=alt.Scale(domain=['Greg', 'Brad'], range=['#0E1A40', '#740001']), legend=None) # Ravenclaw vs Gryffindor
     )
+    
+    # Updating text font and color
     text = alt.Chart(chart_data).mark_text(align='left', dx=15, fontSize=28, font='Henny Penny', color='white').encode(
         x='Points:Q', y=alt.Y('Owner:N', sort='-x'), text='Points:Q'
     )
-    st.altair_chart((bars + text).properties(title=alt.TitleParams(text="POINTS TRACKER", font='Henny Penny', fontSize=32, color='white', dy=-20), height=300, background='transparent').configure_view(strokeWidth=0), use_container_width=True)
+    
+    # Setting "POINTS TRACKER" to Slytherin Green
+    st.altair_chart((bars + text).properties(
+        title=alt.TitleParams(text="POINTS TRACKER", font='Henny Penny', fontSize=32, color='#1A472A', dy=-20), 
+        height=300, background='transparent'
+    ).configure_view(strokeWidth=0), use_container_width=True)

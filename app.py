@@ -13,6 +13,46 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3
 ROUNDS = ['RD 1', 'RD 2', 'Sweet 16', 'Elite 8', 'Final 4', 'Final']
 DB_COLUMNS = ["Owner", "Player", "Team", "Seed", "PPG"] + ROUNDS + ["Total", "Predicted", "Last Sync"]
 
+TEAM_COLORS = {
+    # The Big Ten
+    "Illinois": "#E84A27", "Purdue": "#CEB888", "Northwestern": "#4E2A84", "Iowa": "#FFCD00",
+    "Minnesota": "#7A0019", "Michigan": "#00274C", "Michigan State": "#18453B", "Ohio State": "#BB0000",
+    "Indiana": "#990000", "Wisconsin": "#C5050C", "Maryland": "#E03A3E", "Rutgers": "#CC0033",
+    "Penn State": "#041E42", "Nebraska": "#E41C38", "UCLA": "#2D68C4", "USC": "#990000",
+    "Oregon": "#154733", "Washington": "#4B2E83",
+
+    # Big 12 Heavyweights
+    "Houston": "#C8102E", "Kansas": "#0051BA", "Iowa State": "#C8102E", "Baylor": "#154734",
+    "Texas": "#BF5700", "Texas Tech": "#CC0000", "BYU": "#002255", "TCU": "#4D1979",
+
+    # SEC Powerhouses
+    "Kentucky": "#0033A0", "Tennessee": "#FF8200", "Auburn": "#0C2340", "Alabama": "#9E1B32",
+    "Florida": "#FA4616", "South Carolina": "#73000A", "Texas A&M": "#500000", "Arkansas": "#9D2235",
+
+    # ACC & Big East
+    "Duke": "#003087", "North Carolina": "#7BAFD4", "Virginia": "#232D4B", "Clemson": "#F56600",
+    "UConn": "#000E2F", "Marquette": "#0033A0", "Creighton": "#005CA9", "Villanova": "#002D72",
+
+    # West Coast & Mountain West
+    "Gonzaga": "#041E42", "Arizona": "#CC0033", "San Diego State": "#A6192E", "Colorado State": "#1E4D2B",
+    "Utah State": "#0F2439", "New Mexico": "#BA0C2F", "Nevada": "#003366", "Boise State": "#0033A0",
+    "St. Mary's": "#E31837",
+
+    # Mid-Majors, Cinderellas & First Four
+    "Dayton": "#004B8D", "Florida Atlantic": "#003366", "Drake": "#00447C", "Indiana State": "#005CA9",
+    "Princeton": "#FF6000", "Yale": "#00356B", "Grand Canyon": "#522398", "McNeese": "#FFCC00",
+    "Samford": "#00235D", "Howard": "#003A63", "UMBC": "#FFC20E"
+}
+
+# --- HELPER: LOAD LOCAL IMAGE FOR BACKGROUND ---
+@st.cache_data
+def get_base64_of_bin_file(bin_file):
+    if os.path.exists(bin_file):
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    return ""
+
 # --- 1. AUTHENTICATION (The Bulletproof Method) ---
 @st.cache_resource
 def get_gspread_client():
@@ -50,7 +90,6 @@ try:
     data = sheet.get_all_records()
     db_df = pd.DataFrame(data)
     db_df = db_df.dropna(subset=['Player'])
-    # Clean up empty rows that might cause length issues
     db_df = db_df[db_df['Player'].astype(str).str.strip() != '']
     if db_df.empty or "Player" not in db_df.columns:
         db_df = pd.DataFrame(columns=DB_COLUMNS)
@@ -70,11 +109,9 @@ if len(db_df) < 10:
     st.progress(len(db_df) / 10, text=f"{len(db_df)} out of 10 players drafted")
     st.divider()
     
-    # Filter out players already drafted
     drafted_names = db_df['Player'].tolist()
     filtered_df = available_players_df[~available_players_df['Player'].isin(drafted_names)]
     
-    # The 5th Pick Constraint
     current_user_picks = len(db_df[db_df['Owner'] == current_turn])
     if current_user_picks == 4:
         filtered_df = filtered_df[filtered_df['Seed'] >= 7]
@@ -85,26 +122,17 @@ if len(db_df) < 10:
     if st.button(f"Draft {selected_player_name} for {current_turn}", type="primary"):
         player_data = filtered_df[filtered_df['Player'] == selected_player_name].iloc[0]
         
-        # Build the new row exactly matching your Google Sheet columns
         new_row = [
-            current_turn,           # Owner
-            player_data['Player'],  # Player
-            player_data['Team'],    # Team
-            int(player_data['Seed']),# Seed
-            float(player_data['PPG']),# PPG
-            "", "", "", "", "", "", # The 6 Rounds
-            0,                      # Total
-            0,                      # Predicted
-            ""                      # Last Sync
+            current_turn, player_data['Player'], player_data['Team'], 
+            int(player_data['Seed']), float(player_data['PPG']),
+            "", "", "", "", "", "", 0, 0, ""
         ]
         
-        # Append directly to Google Sheet
         sheet.append_row(new_row)
-        st.rerun() # Instantly refreshes the UI for the next turn
+        st.rerun() 
 
     st.divider()
     
-    # Show current rosters mid-draft
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Greg's Team")
@@ -165,7 +193,22 @@ else:
             if 'X' in row.values:
                 return ['background-color: #4a0000; text-decoration: line-through; color: #ff9999'] * len(row)
             return [''] * len(row)
-        return df_styled.style.apply(row_style, axis=1)
+            
+        def team_color(val):
+            color = TEAM_COLORS.get(val, "")
+            if color:
+                text_color = "black" if color in ["#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00"] else "white"
+                return f'background-color: {color}; color: {text_color}; font-weight: bold; text-align: center;'
+            return ''
+
+        styler = df_styled.style.apply(row_style, axis=1)
+        
+        if hasattr(styler, 'map'):
+            styler = styler.map(team_color, subset=['Team'])
+        else:
+            styler = styler.applymap(team_color, subset=['Team'])
+            
+        return styler
 
     def sync_edits_to_cloud(owner, session_key, original_df):
         edits = st.session_state[session_key]["edited_rows"]
@@ -225,6 +268,23 @@ else:
 
     st.divider()
 
+    img_base64 = get_base64_of_bin_file('image_5b6c44.png')
+    bg_css = f'background-image: url("data:image/png;base64,{img_base64}");' if img_base64 else 'background-color: #f0f0f0;'
+
+    court_css = f"""
+    <style>
+    [data-testid="stVegaLiteChart"] {{
+        {bg_css}
+        background-size: cover;
+        background-position: center;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+    }}
+    </style>
+    """
+    st.markdown(court_css, unsafe_allow_html=True)
+
     chart_data = pd.DataFrame({"Owner": ["Greg", "Brad"], "Total Points": [greg_total, brad_total]})
     
     bars = alt.Chart(chart_data).mark_bar(
@@ -245,11 +305,11 @@ else:
     chart = (bars + text).properties(
         title=alt.TitleParams(text="TEAM TOTALS", fontSize=28, anchor='middle', color='black', dy=-15),
         height=250, background='transparent'
-    ).configure_view(strokeWidth=0)
+    ).configure_view(strokeWidth=0, fill='transparent').configure_axis(grid=False)
     
     st.altair_chart(chart, use_container_width=True)
     
     st.divider()
     if st.button("🚨 Clear Draft & Reset Database"):
         update_google_sheet(pd.DataFrame(columns=DB_COLUMNS))
-        st.rerun() # The crucial command to snap back to the draft room
+        st.rerun()

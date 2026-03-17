@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "ncaa-draft-2026-490502",
+  "private_key_id": "dccce68f1b282042fdb90569c798f7b824b7aad0",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDtg1oD6BzLgzzO\nt0PWHcaB5Fs93CDlwuy72kvjxgSiK7AttqxjPyANH2M57TSDL1Za/6BqWhhXBgJt\nrRqQxkwUIi4J5hAIehXFnWOS+TS55gnNLqXjUXjwSFTz11G+T6Fp+x9N72smJCIW\nyTrX+T9AoL4Yn1qWiL00xQJ7vFSloJrvfFyFeW3IEVEGeLBnrL/+oQZbgV2KzeA/\nQQLM2+Ouq7udw281suBH2yUDqvLY2zA4XrNocvFhRSy0/H/KGvqsIHc+3J7ul4ls\nduio/DaIgtmmMPTYaRJf4RqFa/nb5hUaQfkv2dfKX5xXMOKiKLtAKLJFahSPqDsO\n5+08O8t5AgMBAAECgf9OIEbGbN4L6L9iantbPbAY9I85aeSTBJXvtNQBuGu4bGZ8\novn8K2d/lDOEz7crmlvtfZMRaKauTsETEpMKdtp6RO6f6EKd3Iq3gMNK38OtjTLs\nKyFQr3FN7dJZOG/LCfvZFfbWIUroNjqAWZuMLzsp0bYLTgpI5JxYH0sR0yvaJA1B\nwPccqefRHEsUt0sw7iBKa8Jm70lgELPgTWp8DZYJVNj47frNBnM9FWm+vRvXrPrA\nfWT8Sngq2Br/Ht2TaOn5E8iVG4Q4ceiLj7TWhAAQ1yF/wJqStT4nNzJidDmxXcLW\nayolsEUQfaUy8t0G7VQn1DEgf38yyvGvJbVlRzECgYEA+Y1MYXZ4M2olL09xCZmQ\n1kJ1ymILJa/nRrGkbMhh6DhVoZe5QCGB9MaEiTdToHDt9nBhzKd9631Y5VViL+5q\nu1X3O+s4gEh1Rhb2oBenmPBEtPekD1+elygNkl9dH+5VoHspPM+f6LSVEFweg5N6\nl6hYTfm+HgBs3rBZpsSGe2kCgYEA86Zrma10832q8SAC1teP3WjuJ1vNC/i9EY+f\nf3wFOyiO8vjpA/GYZ/rWt638T3/DNK5d/gJjfVcgRVMCOHXlOf4m7pX3rKmLYyh/\npTdabXdJU2eXGOyBkpFBTdRHAweBpglVRwGLINt9p2XSd3Ojz3x7GZFlaVvPYoUJ\n+lXNHZECgYEAzSBWPm7REwIXGrJkKg3uvg/XHspEe3AB3Vw72adEw0s7KB69CXgB\niKB9ZQTzWpg5Ii7yVPUATke0gJ4UnW2OkfpxxPDuepQUwc4yXxnSi6ZD87TzSCfD\nBmDH9x8oPwz7mXRjSzcnLHLzbIUsF99sD6kzHLVCjwqucsXmi2xTVrECgYEAtCxZ\nn0/cjv5b/WkNkG/hS/p/Og2xqGus7KKHcM92UtPgOZ6FOUxbxnCAfV2kmelBoeBb\nUy3TAmn+TCVhG/1aoDLn+UBe4YiSsaXOFo/DR/WQ/KM64cxq2MafQv158ayIXA7E\nx/hFOOv2lGZAZ+LUvOcxZKvXET06M4Fr6nmub3ECgYB9AL8WCO51QgjCy78UXmlp\nqO1nP7e59MTj9I06Qzm/cY3YgzuAM3IgX3C+oLBqxMFTnWpKuxXWyv/bmFcDKln1\ntoZrXO5s3xYUvBJORGnBi8Z+tHGjCqr/bSP8aIaXnchcYKVcIPCeSPbhTLiY1aVy\nPYOAw8wu+5boNRyYV6YcFA==\n-----END PRIVATE KEY-----\n",
+  "client_email": "streamlit-draft-bot@ncaa-draft-2026-490502.iam.gserviceaccount.com",
+  "client_id": "112667138122694343179",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/streamlit-draft-bot%40ncaa-draft-2026-490502.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

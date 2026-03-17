@@ -125,8 +125,7 @@ else:
             
             final_db = pd.concat([processed_df, other_df], ignore_index=True)
             update_google_sheet(final_db)
-            st.rerun()
-
+    
     col1, col2 = st.columns(2)
     display_cols = ['Player', 'Team', 'Seed', 'PPG', 'RD 1', 'RD 2', 'Sweet 16', 'Elite 8', 'Final 4', 'Final', 'Total']
     col_config = {"PPG": st.column_config.NumberColumn("PPG", format="%.1f")}

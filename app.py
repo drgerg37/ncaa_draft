@@ -188,7 +188,7 @@ else:
             update_google_sheet(pd.concat([process_scores(original_df), db_df[db_df['Owner'] != owner]], ignore_index=True))
 
     col1, col2 = st.columns(2)
-    display_cols = ['Player', 'Team', 'Seed', 'PPG', 'RD 1', 'RD 2', 'Sweet 16', 'Elite 8', 'Final 4', 'Final', 'Total']
+    display_cols = ['Player', 'Team', 'Seed', 'PPG', 'Opening Round', 'Round of 32', 'Sweet 16', 'Elite 8', 'Final 4', 'Final', 'Total']
     
     with col1:
         st.subheader("Greg's Marauders")

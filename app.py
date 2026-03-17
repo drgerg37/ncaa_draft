@@ -6,7 +6,7 @@ import os
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="NCAA Player Draft", layout="wide")
+st.set_page_config(page_title="Project Ligand Draft", layout="wide")
 
 # --- GLOBAL VARIABLES ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1IzvwmlYYt-exsXAMYZQXywGjRe3Cpi0swaR_OK5iZRc/edit#gid=0"
@@ -22,21 +22,27 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
-# --- HELPER: LOAD LOCAL IMAGE FOR BACKGROUND ---
+# --- 2. LOAD SCOUTING CSV ---
 @st.cache_data
-def get_base64_of_bin_file(bin_file):
-    if os.path.exists(bin_file):
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    return ""
+def load_csv_data():
+    try:
+        df = pd.read_csv('ncaa_2026_top_scorers.csv')
+        df = df[['Player', 'Team', 'Seed', 'PPG']]
+        df['Seed'] = df['Seed'].astype(str).str.extract(r'(\d+)')
+        df = df.dropna(subset=['Seed'])
+        df['Seed'] = df['Seed'].astype(int)
+        df['PPG'] = df['PPG'].round(1)
+        return df
+    except Exception:
+        return pd.DataFrame(columns=['Player', 'Team', 'Seed', 'PPG'])
 
-# --- 2. THE RESERVOIR CONNECTION ---
+available_players_df = load_csv_data()
+
+# --- 3. GOOGLE SHEET HELPER FUNCTIONS ---
 client = get_gspread_client()
 sheet = client.open_by_url(SHEET_URL).sheet1
 
 def update_google_sheet(df):
-    """Replaces the st.connection update method with gspread"""
     sheet.clear()
     sheet.update(range_name='A1', values=[df.columns.values.tolist()] + df.values.tolist())
 
@@ -44,6 +50,8 @@ try:
     data = sheet.get_all_records()
     db_df = pd.DataFrame(data)
     db_df = db_df.dropna(subset=['Player'])
+    # Clean up empty rows that might cause length issues
+    db_df = db_df[db_df['Player'].astype(str).str.strip() != '']
     if db_df.empty or "Player" not in db_df.columns:
         db_df = pd.DataFrame(columns=DB_COLUMNS)
 except Exception:
@@ -53,17 +61,64 @@ for r in ROUNDS:
     if r in db_df.columns:
         db_df[r] = db_df[r].fillna("").astype(str)
 
-# --- 3. DRAFTING ROOM (Bypassed if 10 players exist) ---
+# --- 4. THE DRAFTING ROOM (< 10 Players) ---
 if len(db_df) < 10:
     st.title("🏀 NCAA Tournament Player Draft")
-    st.warning("Draft mode is active. (To see the dashboard, ensure 10 players are in the Google Sheet).")
-    # Simplified for the stress test bypass
-    st.dataframe(db_df)
+    
+    current_turn = "Greg" if len(db_df) % 2 == 0 else "Brad"
+    st.header(f"👉 Currently Picking: **{current_turn}**")
+    st.progress(len(db_df) / 10, text=f"{len(db_df)} out of 10 players drafted")
+    st.divider()
+    
+    # Filter out players already drafted
+    drafted_names = db_df['Player'].tolist()
+    filtered_df = available_players_df[~available_players_df['Player'].isin(drafted_names)]
+    
+    # The 5th Pick Constraint
+    current_user_picks = len(db_df[db_df['Owner'] == current_turn])
+    if current_user_picks == 4:
+        filtered_df = filtered_df[filtered_df['Seed'] >= 7]
+        st.warning("🚨 **5th Pick Constraint Active:** The pool has been filtered. You may only select a 7-seed or lower!")
+    
+    selected_player_name = st.selectbox("Search & Select a Player to Draft:", filtered_df['Player'].tolist())
+    
+    if st.button(f"Draft {selected_player_name} for {current_turn}", type="primary"):
+        player_data = filtered_df[filtered_df['Player'] == selected_player_name].iloc[0]
+        
+        # Build the new row exactly matching your Google Sheet columns
+        new_row = [
+            current_turn,           # Owner
+            player_data['Player'],  # Player
+            player_data['Team'],    # Team
+            int(player_data['Seed']),# Seed
+            float(player_data['PPG']),# PPG
+            "", "", "", "", "", "", # The 6 Rounds
+            0,                      # Total
+            0,                      # Predicted
+            ""                      # Last Sync
+        ]
+        
+        # Append directly to Google Sheet
+        sheet.append_row(new_row)
+        st.rerun() # Instantly refreshes the UI for the next turn
 
-# --- 4. THE DASHBOARD (The Stress Test UI) ---
+    st.divider()
+    
+    # Show current rosters mid-draft
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Greg's Team")
+        greg_view = db_df[db_df['Owner'] == 'Greg']
+        st.dataframe(greg_view[['Player', 'Team', 'Seed', 'PPG']], hide_index=True, width='stretch')
+    with col2:
+        st.subheader("Brad's Team")
+        brad_view = db_df[db_df['Owner'] == 'Brad']
+        st.dataframe(brad_view[['Player', 'Team', 'Seed', 'PPG']], hide_index=True, width='stretch')
+
+# --- 5. THE DASHBOARD (Draft Complete) ---
 else:
     st.title("🏆 Tournament Dashboard")
-    st.markdown("Enter points below. Enter **X** if a player's team is eliminated. Edits save to the cloud automatically.")
+    st.success("The Draft is Complete! The system is now waiting for Melvin to sync live scores.")
     
     def process_scores(df_input):
         df_proc = df_input.copy()
@@ -125,7 +180,7 @@ else:
             
             final_db = pd.concat([processed_df, other_df], ignore_index=True)
             update_google_sheet(final_db)
-    
+
     col1, col2 = st.columns(2)
     display_cols = ['Player', 'Team', 'Seed', 'PPG', 'RD 1', 'RD 2', 'Sweet 16', 'Elite 8', 'Final 4', 'Final', 'Total']
     col_config = {"PPG": st.column_config.NumberColumn("PPG", format="%.1f")}
@@ -197,4 +252,4 @@ else:
     st.divider()
     if st.button("🚨 Clear Draft & Reset Database"):
         update_google_sheet(pd.DataFrame(columns=DB_COLUMNS))
-        st.rerun()
+        st.rerun() # The crucial command to snap back to the draft room

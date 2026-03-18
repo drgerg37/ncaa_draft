@@ -16,7 +16,7 @@ DB_COLUMNS = ["Owner", "Player", "Team", "Seed", "PPG"] + ROUNDS + ["Total", "Pr
 
 LIGHT_TEAM_COLORS = {
     "#FFCD00", "#CEB888", "#7BAFD4", "#FFC20E", "#FFCC00",
-    "#FF8200", "#FA4616", "#F56600", "#FF6000", "#BF5700"
+    "#FF8200", "#FA4616", "#F56600", "#FF6000", "#BF5700", "#F1B82D"
 }
 
 # --- WIZARDING FONTS & STYLING ---
@@ -83,7 +83,9 @@ TEAM_COLORS = {
     "New Mexico": "#BA0C2F", "Nevada": "#003366", "Boise State": "#0033A0", "St. Mary's": "#E31837",
     "Dayton": "#004B8D", "Florida Atlantic": "#003366", "Drake": "#00447C", "Indiana State": "#005CA9",
     "Princeton": "#FF6000", "Yale": "#00356B", "Grand Canyon": "#522398", "McNeese": "#FFCC00",
-    "Samford": "#00235D", "Howard": "#003A63", "UMBC": "#FFC20E"
+    "Samford": "#00235D", "Howard": "#003A63", "UMBC": "#FFC20E",
+    # --- ADDITIONS ---
+    "Akron": "#041E42", "Miami (FL)": "#005030", "Miami (OH)": "#C41230", "Missouri": "#F1B82D"
 }
 
 
@@ -124,7 +126,6 @@ def get_gspread_client():
 
 
 def read_sheet_to_df(ws):
-    """Read entire sheet into a DataFrame. Returns empty DF on failure."""
     try:
         records = ws.get_all_records()
         if not records:
@@ -132,7 +133,6 @@ def read_sheet_to_df(ws):
         df = pd.DataFrame(records)
         df = df.dropna(subset=['Player'])
         df = df[df['Player'].astype(str).str.strip() != '']
-        # Migration from old column names
         df = df.rename(columns={'RD 1': 'Opening Round', 'RD 2': 'Round of 32'})
         if df.empty or "Player" not in df.columns:
             return pd.DataFrame(columns=DB_COLUMNS)
@@ -142,9 +142,7 @@ def read_sheet_to_df(ws):
 
 
 def write_df_to_sheet(ws, df):
-    """Overwrite entire sheet with DataFrame contents."""
     ws.clear()
-    # Convert everything to native Python types to avoid gspread serialization issues
     header = df.columns.tolist()
     rows = df.astype(str).values.tolist()
     ws.update(range_name='A1', values=[header] + rows)
@@ -156,13 +154,11 @@ client = get_gspread_client()
 sheet = client.open_by_url(SHEET_URL).sheet1
 db_df = read_sheet_to_df(sheet)
 
-# Ensure all round columns exist and are string
 for r in ROUNDS:
     if r not in db_df.columns:
         db_df[r] = ""
     db_df[r] = db_df[r].fillna("").astype(str)
 
-# Ensure numeric columns exist
 for col in ['Total', 'Predicted']:
     if col not in db_df.columns:
         db_df[col] = 0.0
@@ -170,7 +166,6 @@ for col in ['Total', 'Predicted']:
 
 # --- STYLE ENGINE ---
 def style_dataframe(df_input):
-    """Pandas Styler for team colors. Works with st.dataframe(), NOT st.data_editor()."""
     df = df_input.copy()
 
     def apply_styles(row):
@@ -185,7 +180,6 @@ def style_dataframe(df_input):
                     f'background-color: {color}; color: {text_color}; font-weight: bold;'
                 )
 
-        # Eliminated row — check ONLY round columns
         round_vals = [str(row.get(r, "")).strip().upper() for r in ROUNDS if r in row.index]
         if 'X' in round_vals:
             return [
@@ -243,8 +237,6 @@ if len(db_df) < 10:
                 filtered_df['Player'] == selected_player_name
             ].iloc[0]
 
-            # Build new row as DataFrame, concat, write ENTIRE frame back
-            # (same full-overwrite pattern that worked in v1)
             new_row = pd.DataFrame([{
                 "Owner": current_turn,
                 "Player": player_data['Player'],
@@ -341,7 +333,6 @@ else:
     disabled_cols = ['Player', 'Team', 'Seed', 'PPG', 'Total', 'Predicted', 'Owner']
 
     def sync_edits_to_cloud(owner, session_key, original_df):
-        """Write edits back to Google Sheets."""
         edits = st.session_state[session_key]["edited_rows"]
         if edits:
             for row_idx, row_edits in edits.items():
@@ -358,14 +349,12 @@ else:
 
     with col1:
         st.subheader("Greg's Marauders")
-
         st.dataframe(
             style_dataframe(greg_df),
             hide_index=True,
             column_order=roster_cols,
             use_container_width=True
         )
-
         with st.expander("✏️ Edit Scores", expanded=False):
             st.data_editor(
                 greg_df,
@@ -377,7 +366,6 @@ else:
                 args=("Greg", "greg_editor", greg_df),
                 use_container_width=True
             )
-
         st.metric(
             "Score",
             f"{greg_df['Total'].sum():g}",
@@ -386,14 +374,12 @@ else:
 
     with col2:
         st.subheader("Brad's Marauders")
-
         st.dataframe(
             style_dataframe(brad_df),
             hide_index=True,
             column_order=roster_cols,
             use_container_width=True
         )
-
         with st.expander("✏️ Edit Scores", expanded=False):
             st.data_editor(
                 brad_df,
@@ -405,7 +391,6 @@ else:
                 args=("Brad", "brad_editor", brad_df),
                 use_container_width=True
             )
-
         st.metric(
             "Score",
             f"{brad_df['Total'].sum():g}",
@@ -414,9 +399,7 @@ else:
 
     st.divider()
 
-    # ============================================================
-    # THE COURT TRACKER
-    # ============================================================
+    # --- CHART ---
     img_base64 = get_base64_of_bin_file('Gemini_Generated_Image_ij5asoij5asoij5a.png')
     if img_base64:
         st.markdown(f"""
@@ -431,48 +414,18 @@ else:
 
     greg_total = float(greg_df['Total'].sum())
     brad_total = float(brad_df['Total'].sum())
-    chart_data = pd.DataFrame({
-        "Owner": ["Greg", "Brad"],
-        "Points": [greg_total, brad_total]
-    })
+    chart_data = pd.DataFrame({"Owner": ["Greg", "Brad"], "Points": [greg_total, brad_total]})
 
     bars = alt.Chart(chart_data).mark_bar(cornerRadius=8, size=50).encode(
         x=alt.X('Points:Q', axis=None),
-        y=alt.Y(
-            'Owner:N', sort='-x',
-            axis=alt.Axis(
-                labelFontSize=22, labelFont='Luminari',
-                labelFontWeight='bold', labelColor='white',
-                domain=False, ticks=False
-            )
-        ),
-        color=alt.condition(
-            alt.datum.Owner == 'Brad',
-            alt.value('#A6192E'),
-            alt.value('#003366')
-        )
+        y=alt.Y('Owner:N', sort='-x', axis=alt.Axis(labelFontSize=22, labelFont='Luminari', labelFontWeight='bold', labelColor='white', domain=False, ticks=False)),
+        color=alt.condition(alt.datum.Owner == 'Brad', alt.value('#A6192E'), alt.value('#003366'))
     )
-
-    text = alt.Chart(chart_data).mark_text(
-        align='left', dx=15, fontSize=28, font='Luminari',
-        fontWeight='bold', color='white'
-    ).encode(
-        x='Points:Q',
-        y=alt.Y('Owner:N', sort='-x'),
-        text=alt.Text('Points:Q', format='.0f')
+    text = alt.Chart(chart_data).mark_text(align='left', dx=15, fontSize=28, font='Luminari', fontWeight='bold', color='white').encode(
+        x='Points:Q', y=alt.Y('Owner:N', sort='-x'), text=alt.Text('Points:Q', format='.0f')
     )
+    st.altair_chart((bars + text).properties(title=alt.TitleParams(text="POINTS TRACKER", font='Luminari', fontSize=32, color='#2E7D32', dy=-20), height=300, background='transparent').configure_axis(labelColor='white').configure_view(strokeWidth=0), use_container_width=True)
 
-    chart = (bars + text).properties(
-        title=alt.TitleParams(
-            text="POINTS TRACKER", font='Luminari',
-            fontSize=32, color='#2E7D32', dy=-20
-        ),
-        height=300, background='transparent'
-    ).configure_axis(labelColor='white').configure_view(strokeWidth=0)
-
-    st.altair_chart(chart, use_container_width=True)
-
-    # --- Admin ---
     with st.expander("⚠️ Admin"):
         if st.button("🚨 Reset Database", type="secondary"):
             write_df_to_sheet(sheet, pd.DataFrame(columns=DB_COLUMNS))

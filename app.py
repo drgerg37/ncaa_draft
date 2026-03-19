@@ -120,7 +120,8 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds_json = base64.b64decode(st.secrets["GOOGLE_CREDS_B64"]).decode()
+    encoded = st.secrets["CREDS_1"] + st.secrets["CREDS_2"] + st.secrets["CREDS_3"]
+    creds_json = base64.b64decode(encoded).decode()
     creds_dict = json.loads(creds_json)
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)

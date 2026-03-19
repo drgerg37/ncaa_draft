@@ -123,6 +123,13 @@ def get_gspread_client():
     encoded = st.secrets["CREDS_1"] + st.secrets["CREDS_2"] + st.secrets["CREDS_3"]
     creds_json = base64.b64decode(encoded).decode()
     creds_dict = json.loads(creds_json)
+    # Ensure private key has real newlines (not literal \n strings)
+    pk = creds_dict["private_key"]
+    if "\\n" in pk:
+        pk = pk.replace("\\n", "\n")
+    if not pk.endswith("\n"):
+        pk = pk + "\n"
+    creds_dict["private_key"] = pk
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 

@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 import base64
+import json
 import os
 import gspread
 from google.oauth2.service_account import Credentials
@@ -119,8 +120,8 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    creds_json = base64.b64decode(st.secrets["GOOGLE_CREDS_B64"]).decode()
+    creds_dict = json.loads(creds_json)
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 

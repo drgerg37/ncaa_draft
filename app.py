@@ -120,10 +120,10 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    encoded = st.secrets["CREDS_1"] + st.secrets["CREDS_2"] + st.secrets["CREDS_3"]
+    encoded = st.secrets["GOOGLE_CREDS_B64"]
     creds_json = base64.b64decode(encoded).decode()
     creds_dict = json.loads(creds_json)
-    # Ensure private key has real newlines (not literal \n strings)
+    # Ensure private key has real newlines
     pk = creds_dict["private_key"]
     if "\\n" in pk:
         pk = pk.replace("\\n", "\n")

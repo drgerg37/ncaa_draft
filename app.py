@@ -120,15 +120,8 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    import tempfile
-    encoded = st.secrets["GOOGLE_CREDS_B64"]
-    creds_json = base64.b64decode(encoded).decode()
-    # Write to temp file to bypass Python 3.14 cryptography PEM parsing bug
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        f.write(creds_json)
-        tmp_path = f.name
-    creds = Credentials.from_service_account_file(tmp_path, scopes=scope)
-    os.unlink(tmp_path)
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
 

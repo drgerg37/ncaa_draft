@@ -121,15 +121,25 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/drive"
     ]
     encoded = st.secrets["GOOGLE_CREDS_B64"]
+    import sys
+    print(f"DEBUG: encoded length = {len(encoded)}", file=sys.stderr)
     creds_json = base64.b64decode(encoded).decode()
     creds_dict = json.loads(creds_json)
-    # Ensure private key has real newlines
     pk = creds_dict["private_key"]
+    print(f"DEBUG: pk length = {len(pk)}", file=sys.stderr)
+    print(f"DEBUG: pk starts with = {repr(pk[:40])}", file=sys.stderr)
+    print(f"DEBUG: pk ends with = {repr(pk[-40:])}", file=sys.stderr)
+    print(f"DEBUG: real newlines count = {pk.count(chr(10))}", file=sys.stderr)
+    print(f"DEBUG: literal backslash-n count = {pk.count(chr(92) + 'n')}", file=sys.stderr)
+    # Ensure private key has real newlines
     if "\\n" in pk:
         pk = pk.replace("\\n", "\n")
     if not pk.endswith("\n"):
         pk = pk + "\n"
     creds_dict["private_key"] = pk
+    print(f"DEBUG: pk after fix length = {len(pk)}", file=sys.stderr)
+    print(f"DEBUG: pk after fix starts = {repr(pk[:40])}", file=sys.stderr)
+    print(f"DEBUG: pk after fix newlines = {pk.count(chr(10))}", file=sys.stderr)
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
